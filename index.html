@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Video Recap Generator</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 15px; background: #f4f4f9; max-width: 500px; margin: auto; }
+    .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h2 { color: #333; text-align: center; }
+    .form-group { margin-bottom: 15px; }
+    label { font-weight: bold; display: block; margin-bottom: 5px; }
+    input, select, button { width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
+    button { background: #0070f3; color: white; font-weight: bold; border: none; margin-top: 10px; cursor: pointer; }
+    #status { margin-top: 15px; font-weight: bold; text-align: center; color: #555; }
+    video { width: 100%; margin-top: 15px; border-radius: 8px; display: none; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2>AI Movie Recap</h2>
+  
+  <div class="form-group">
+    <label>၁။ ဗီဒီယို ရွေးပါ -</label>
+    <input type="file" id="videoInput" accept="video/*">
+  </div>
+
+  <div class="form-group">
+    <label>၂။ Recap ကြာချိန် (စက္ကန့်) -</label>
+    <select id="duration">
+      <option value="60">၁ မိနစ် (Shorts/Reels)</option>
+      <option value="180" selected>၃ မိနစ်</option>
+      <option value="300">၅ မိနစ်</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>၃။ Voice (အသံအမျိုးအစား) -</label>
+    <select id="voiceType">
+      <option value="my-MM-ThihaNeural">မြန်မာ - အမျိုးသားသံ (Thiha)</option>
+      <option value="my-MM-NilarNeural">မြန်မာ - အမျိုးသမီးသံ (Nilar)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>၄။ အသံအမြန်နှုန်း -</label>
+    <select id="voiceSpeed">
+      <option value="+0%">ပုံမှန် (1.0x)</option>
+      <option value="+15%" selected>အနည်းငယ်မြန် (1.15x)</option>
+      <option value="+30%">မြန် (1.30x)</option>
+    </select>
+  </div>
+
+  <button onclick="submitVideo()">Recap Video စတင်ဖန်တီးမည်</button>
+
+  <div id="status"></div>
+  <video id="outputVideo" controls></video>
+</div>
+
+<script>
+  async function submitVideo() {
+    const fileInput = document.getElementById('videoInput');
+    const statusDiv = document.getElementById('status');
+    const videoPlayer = document.getElementById('outputVideo');
+
+    if (!fileInput.files[0]) {
+      alert("ကျေးဇူးပြု၍ ဗီဒီယိုဖိုင် ရွေးပေးပါ။");
+      return;
+    }
+
+    // သင်၏ Render Backend URL ပြောင်းရန်
+    const BACKEND_URL = "https://YOUR-RENDER-SERVICE.onrender.com/process-video"; 
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+    formData.append("duration", document.getElementById('duration').value);
+    formData.append("voice_speed", document.getElementById('voiceSpeed').value);
+    formData.append("voice_type", document.getElementById('voiceType').value);
+
+    statusDiv.innerText = "Video ကို AI မှ စစ်ဆေးဖြတ်တောက်ပြီး အသံသွင်းနေပါသည် (ခဏစောင့်ပါ)...";
+    videoPlayer.style.display = "none";
+
+    try {
+      const response = await fetch(BACKEND_URL, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) throw new Error("Processing အဆင်မပြေပါ။");
+
+      const blob = await response.blob();
+      const videoURL = URL.createObjectURL(blob);
+      
+      videoPlayer.src = videoURL;
+      videoPlayer.style.display = "block";
+      statusDiv.innerText = "ဖန်တီးမှု ပြီးစီးပါပြီ။ အောက်တွင် ကြည့်ရှုနိုင်ပါသည်။";
+    } catch (err) {
+      statusDiv.innerText = "အမှားတစ်ခု ဖြစ်ပေါ်နေပါသည် - " + err.message;
+    }
+  }
+</script>
+
+</body>
+</html>
+
