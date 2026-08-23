@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 # ⚠️ သင့် Google AI Studio က API Key အမှန်ကို ဒီမှာ ထည့်ပေးပါ
-GENAI_API_KEY = "AIzaSyBXOzwxUlTshVluPnlO-ERr3Y-zkTmYdac"
+GENAI_API_KEY = "AIzaSyCdNsTtFVmfTH7dgEbm56vhTxc3PwltswM"
 genai.configure(api_key=GENAI_API_KEY)
 
 async def text_to_speech(text: str, output_path: str, voice: str = "my-MM-ThihaNeural", speed: str = "+15%"):
