@@ -3,5 +3,6 @@ uvicorn
 python-multipart
 google-generativeai
 edge-tts
-moviepy==1.0.3
-proglog
+moviepy
+opencv-python-headless
+numpy
