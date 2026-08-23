@@ -17,9 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ⚠️ သင့် Google AI Studio က API Key အမှန်ကို ဒီမှာ ထည့်ပေးပါ
-GENAI_API_KEY = "AIzaSyCdNsTtFVmfTH7dgEbm56vhTxc3PwltswM"
-genai.configure(api_key=GENAI_API_KEY)
+# Render Environment Variable မှ API Key ကို ယူသုံးခြင်း
+GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GENAI_API_KEY:
+    genai.configure(api_key=GENAI_API_KEY)
 
 async def text_to_speech(text: str, output_path: str, voice: str = "my-MM-ThihaNeural", speed: str = "+15%"):
     communicate = edge_tts.Communicate(text, voice, rate=speed)
@@ -36,6 +37,9 @@ async def process_video(
     voice_speed: str = Form("+15%"),
     voice_type: str = Form("my-MM-ThihaNeural")
 ):
+    if not GENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY ကို Render Environment Variables တွင် ထည့်သွင်းမထားပါ။")
+
     input_video_path = f"temp_{file.filename}"
     output_video_path = f"recap_{file.filename}"
     audio_path = "temp_voice.mp3"
@@ -44,11 +48,11 @@ async def process_video(
         f.write(await file.read())
 
     try:
-        # ၁။ Gemini AI ဖြင့် ဗီဒီယို စစ်ဆေးခြင်း
+        # ၁။ Gemini AI ဖြင့် စစ်ဆေးခြင်း
         video_file = genai.upload_file(path=input_video_path)
         model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         
-        prompt = f"Analyze this video and generate a full movie recap script in Burmese language. The audio length should match around {duration} seconds."
+        prompt = f"Analyze this video and generate a full movie recap script in Burmese language. The script content must match a narrative audio playback duration of approximately {duration} seconds."
         response = model.generate_content([video_file, prompt])
         recap_script = response.text
 
@@ -79,7 +83,6 @@ async def process_video(
         return FileResponse(output_video_path, media_type="video/mp4", filename=output_video_path)
 
     except Exception as e:
-        # ယာယီဖိုင်များ ဖျက်ခြင်း
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
         raise HTTPException(status_code=500, detail=str(e))
