@@ -1,5 +1,4 @@
 import os
-import time
 import asyncio
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,20 +21,54 @@ GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
 
-async def text_to_speech(text: str, output_path: str, voice: str = "my-MM-ThihaNeural", speed: str = "+15%"):
-    communicate = edge_tts.Communicate(text, voice, rate=speed)
+# Voice Mapping Configuration (Microsoft Edge TTS Engine)
+VOICE_MAPPING = {
+    "koko": "my-MM-ThihaNeural",       # တည်ငြိမ်တဲ့ အမျိုးသားသံ
+    "nyinyi": "my-MM-ThihaNeural",     # Recap ပြောတဲ့ အမျိုးသားသံ
+    "maungmaung": "my-MM-ThihaNeural", # စိတ်ခံစားမှု အမျိုးသားသံ
+    "u_paing": "my-MM-ThihaNeural",    # လူကြီးအသံ (အမျိုးသား)
+    "hlahla": "my-MM-NilarNeural",     # တည်ငြိမ်တဲ့ အမျိုးသမီးသံ
+    "myamya": "my-MM-NilarNeural",     # Recap ပြောတဲ့ အမျိုးသမီးသံ
+    "yuya": "my-MM-NilarNeural",       # စိတ်ခံစားမှု အမျိုးသမီးသံ
+    "daw_myalay": "my-MM-NilarNeural"  # လူကြီးအသံ (အမျိုးသမီး)
+}
+
+# Voice Speed Parameters setup for emotional nuances
+VOICE_PITCH_SPEED = {
+    "koko": {"speed": "+0%", "pitch": "-5Hz"},
+    "nyinyi": {"speed": "+15%", "pitch": "+0Hz"},
+    "maungmaung": {"speed": "+10%", "pitch": "-2Hz"},
+    "u_paing": {"speed": "-10%", "pitch": "-10Hz"},
+    "hlahla": {"speed": "+0%", "pitch": "-2Hz"},
+    "myamya": {"speed": "+15%", "pitch": "+0Hz"},
+    "yuya": {"speed": "+10%", "pitch": "+3Hz"},
+    "daw_myalay": {"speed": "-10%", "pitch": "-8Hz"},
+}
+
+async def text_to_speech(text: str, output_path: str, voice_key: str, speed_override: str):
+    voice = VOICE_MAPPING.get(voice_key, "my-MM-ThihaNeural")
+    preset = VOICE_PITCH_SPEED.get(voice_key, {"speed": "+15%", "pitch": "+0Hz"})
+    
+    # Use user speed override if provided, else use preset speed
+    chosen_speed = speed_override if speed_override else preset["speed"]
+    pitch = preset["pitch"]
+
+    communicate = edge_tts.Communicate(text, voice, rate=chosen_speed, pitch=pitch)
     await communicate.save(output_path)
 
 @app.get("/")
 def home():
-    return {"status": "ok", "message": "Recap API Engine is active"}
+    return {"status": "ok", "message": "Recap with Tarbin Studio Engine active"}
 
 @app.post("/process-video")
 async def process_video(
     file: UploadFile = File(...),
     duration: int = Form(180),
     voice_speed: str = Form("+15%"),
-    voice_type: str = Form("my-MM-ThihaNeural")
+    voice_type: str = Form("nyinyi"),
+    tone_mood: str = Form("dramatic"),
+    pacing: str = Form("fast"),
+    include_outro: bool = Form(True)
 ):
     if not GENAI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY ကို Render Environment Variables တွင် ထည့်သွင်းမထားပါ။")
@@ -49,30 +82,41 @@ async def process_video(
 
     video_file = None
     try:
-        # ၁။ Gemini AI သို့ ဗီဒီယို အပ်လုဒ်တင်ခြင်း
+        # 1. Video Upload to Gemini File API
         video_file = genai.upload_file(path=input_video_path)
         
-        # 💡 အဓိက ပြင်ဆင်ချက် - ဖိုင် ACTIVE ဖြစ်လာသည်အထိ စောင့်ရန်
+        # Poll state until ACTIVE
         while video_file.state.name == "PROCESSING":
-            await asyncio.sleep(5)
+            await asyncio.sleep(4)
             video_file = genai.get_file(video_file.name)
             
         if video_file.state.name != "ACTIVE":
             raise Exception(f"ဗီဒီယိုဖိုင် စီစစ်မှု အဆင်မပြေပါ (State: {video_file.state.name})")
 
-        # ၂။ Gemini ဖြင့် Script ထုတ်ခြင်း
+        # 2. Prompt Builder with Tone & Mood Studio Customization
+        outro_text = " 'History With Tarbin' မှ တင်ဆက်ပေးလိုက်တာဖြစ်ပါတယ်။ ကြည့်ရှုပေးတဲ့အတွက် ကျေးဇူးတင်ပါတယ်။" if include_outro else ""
+        
+        prompt = f"""
+        Analyze this video and generate a professional movie recap script in Burmese language.
+        Requirements:
+        - Script Duration Target: Match audio narrative pace for approximately {duration} seconds.
+        - Tone & Mood Style: {tone_mood} (e.g., dramatic suspenseful, humorous comedy, documentary style, mysterious thriller).
+        - Narrative Pacing: {pacing}.
+        - Do NOT include scene descriptions, timestamps, or technical brackets like [Music Starts]. Provide ONLY the spoken Burmese monologue text.
+        - Outro: End the script with this phrase: "{outro_text}"
+        """
+
         model = genai.GenerativeModel(model_name="gemini-2.5-flash")
-        prompt = f"Analyze this video and generate a full movie recap script in Burmese language. The script content must match a narrative audio playback duration of approximately {duration} seconds."
         response = model.generate_content([video_file, prompt])
         recap_script = response.text
 
         if not recap_script:
             raise Exception("Gemini AI မှ Script မထုတ်ပေးနိုင်ပါ။")
 
-        # ၃။ Text to Speech အသံဖိုင် ဖန်တီးခြင်း
-        await text_to_speech(recap_script, audio_path, voice=voice_type, speed=voice_speed)
+        # 3. Audio Synthesis
+        await text_to_speech(recap_script, audio_path, voice_key=voice_type, speed_override=voice_speed)
 
-        # ၄။ Video ဖြတ်တောက်ပြီး ပြန်လည်ပေါင်းစပ်ခြင်း
+        # 4. Video & Audio Sync Processing
         video_clip = VideoFileClip(input_video_path)
         audio_clip = AudioFileClip(audio_path)
 
@@ -87,9 +131,12 @@ async def process_video(
         video_clip.close()
         audio_clip.close()
 
-        # အသုံးပြုပြီးသော Google File ကို ဖျက်ရန်
+        # Clean Up Google Drive/File Storage
         if video_file:
-            genai.delete_file(video_file.name)
+            try:
+                genai.delete_file(video_file.name)
+            except:
+                pass
 
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
