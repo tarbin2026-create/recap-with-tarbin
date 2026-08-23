@@ -24,17 +24,25 @@ if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
 
 VOICE_MAPPING = {
-    "koko": "my-MM-ThihaNeural", "nyinyi": "my-MM-ThihaNeural",
-    "maungmaung": "my-MM-ThihaNeural", "u_paing": "my-MM-ThihaNeural",
-    "hlahla": "my-MM-NilarNeural", "myamya": "my-MM-NilarNeural",
-    "yuya": "my-MM-NilarNeural", "daw_myalay": "my-MM-NilarNeural"
+    "koko": "my-MM-ThihaNeural",
+    "nyinyi": "my-MM-ThihaNeural",
+    "maungmaung": "my-MM-ThihaNeural",
+    "u_paing": "my-MM-ThihaNeural",
+    "hlahla": "my-MM-NilarNeural",
+    "myamya": "my-MM-NilarNeural",
+    "yuya": "my-MM-NilarNeural",
+    "daw_myalay": "my-MM-NilarNeural"
 }
 
 VOICE_PITCH_SPEED = {
-    "koko": {"speed": "+0%", "pitch": "-5Hz"}, "nyinyi": {"speed": "+15%", "pitch": "+0Hz"},
-    "maungmaung": {"speed": "+10%", "pitch": "-2Hz"}, "u_paing": {"speed": "-10%", "pitch": "-10Hz"},
-    "hlahla": {"speed": "+0%", "pitch": "-2Hz"}, "myamya": {"speed": "+15%", "pitch": "+0Hz"},
-    "yuya": {"speed": "+10%", "pitch": "+3Hz"}, "daw_myalay": {"speed": "-10%", "pitch": "-8Hz"}
+    "koko": {"speed": "+0%", "pitch": "-5Hz"},
+    "nyinyi": {"speed": "+15%", "pitch": "+0Hz"},
+    "maungmaung": {"speed": "+10%", "pitch": "-2Hz"},
+    "u_paing": {"speed": "-10%", "pitch": "-10Hz"},
+    "hlahla": {"speed": "+0%", "pitch": "-2Hz"},
+    "myamya": {"speed": "+15%", "pitch": "+0Hz"},
+    "yuya": {"speed": "+10%", "pitch": "+3Hz"},
+    "daw_myalay": {"speed": "-10%", "pitch": "-8Hz"}
 }
 
 async def text_to_speech(text: str, output_path: str, voice_key: str, speed_override: str):
@@ -61,17 +69,16 @@ def apply_text_blur(clip, blur_position="bottom", blur_size="medium"):
 
 @app.get("/")
 def home():
-    return {"status": "ok", "message": "Recap with Tarbin Studio Engine Active"}
+    return {"status": "ok", "message": "Recap Studio Active"}
 
-# Tab 1: Full Recap Generator
 @app.post("/process-recap")
 async def process_recap(
     file: UploadFile = File(...),
     duration: int = Form(180),
     voice_speed: str = Form("+15%"),
     voice_type: str = Form("nyinyi"),
-    tone_mood: str = Form("dramatic"),
-    pacing: str = Form("fast"),
+    tone_mood: str = Form("Dramatic"),
+    pacing: str = Form("Fast"),
     include_outro: bool = Form(True)
 ):
     if not GENAI_API_KEY:
@@ -91,25 +98,13 @@ async def process_recap(
             await asyncio.sleep(3)
             video_file = genai.get_file(video_file.name)
 
-        outro_text = " 'History With Tarbin' မှ တင်ဆက်ပေးလိုက်တာဖြစ်ပါတယ်။ ကြည့်ရှုပေးတဲ့အတွက် ကျေးဇူးတင်ပါတယ်။" if include_outro else ""
-        prompt = f"""
-        Analyze this video and generate a full movie recap script in Burmese language.
-        Requirements:
-        - Target duration: match ~{duration} seconds spoken output.
-        - Tone & Mood: {tone_mood}.
-        - Pacing: {pacing}.
-        - Spoken Burmese monologue text ONLY.
-        - End phrase: "{outro_text}"
-        """
+        outro_text = " 'History With Tarbin' မှ တင်ဆက်ပေးလိုက်တာဖြစ်ပါတယ်။" if include_outro else ""
+        prompt = f"Analyze video, write Burmese movie recap script (~{duration}s audio duration). Mood: {tone_mood}, Pacing: {pacing}. Plain text only. End with: '{outro_text}'"
 
         model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         response = model.generate_content([video_file, prompt])
-        recap_script = response.text
-
-        if not recap_script:
-            raise Exception("Gemini AI မှ Script မထုတ်ပေးနိုင်ပါ။")
-
-        await text_to_speech(recap_script, audio_path, voice_type, voice_speed)
+        
+        await text_to_speech(response.text, audio_path, voice_type, voice_speed)
 
         video_clip = VideoFileClip(input_video_path)
         audio_clip = AudioFileClip(audio_path)
@@ -122,25 +117,17 @@ async def process_recap(
 
         video_clip.close()
         audio_clip.close()
-
-        if video_file:
-            try: genai.delete_file(video_file.name)
-            except: pass
-
+        if video_file: genai.delete_file(video_file.name)
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
 
         return FileResponse(output_video_path, media_type="video/mp4", filename=output_video_path)
-
     except Exception as e:
-        if video_file:
-            try: genai.delete_file(video_file.name)
-            except: pass
+        if video_file: genai.delete_file(video_file.name)
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
         raise HTTPException(status_code=500, detail=str(e))
 
-# Tab 2: Standalone Post-processing Editor
 @app.post("/apply-editor")
 async def apply_editor(
     file: UploadFile = File(...),
@@ -170,12 +157,7 @@ async def apply_editor(
 
         final_elements = [video_clip]
         if logo_path and os.path.exists(logo_path):
-            pos_map = {
-                "top-left": ("left", "top"),
-                "top-right": ("right", "top"),
-                "bottom-left": ("left", "bottom"),
-                "bottom-right": ("right", "bottom")
-            }
+            pos_map = {"top-left": ("left", "top"), "top-right": ("right", "top"), "bottom-left": ("left", "bottom"), "bottom-right": ("right", "bottom")}
             logo_clip = (ImageClip(logo_path)
                          .resize(width=logo_size)
                          .set_duration(video_clip.duration)
@@ -190,7 +172,6 @@ async def apply_editor(
         if logo_path and os.path.exists(logo_path): os.remove(logo_path)
 
         return FileResponse(output_video_path, media_type="video/mp4", filename=output_video_path)
-
     except Exception as e:
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if logo_path and os.path.exists(logo_path): os.remove(logo_path)
