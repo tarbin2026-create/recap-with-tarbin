@@ -48,7 +48,12 @@ def apply_text_blur(clip, blur_position="bottom", blur_size="medium"):
     def filter_frame(frame):
         h, w, _ = frame.shape
         blurred_frame = frame.copy()
-        y1, y2 = (int(h * 0.75), h) if blur_position == "bottom" else ((0, int(h * 0.25)) if blur_position == "top" else (int(h * 0.35), int(h * 0.65)))
+        if blur_position == "bottom":
+            y1, y2 = int(h * 0.75), h
+        elif blur_position == "top":
+            y1, y2 = 0, int(h * 0.25)
+        else:
+            y1, y2 = int(h * 0.35), int(h * 0.65)
         roi = frame[y1:y2, 0:w]
         blurred_frame[y1:y2, 0:w] = cv2.GaussianBlur(roi, (intensity, intensity), 0)
         return blurred_frame
@@ -56,9 +61,9 @@ def apply_text_blur(clip, blur_position="bottom", blur_size="medium"):
 
 @app.get("/")
 def home():
-    return {"status": "ok", "message": "Recap Studio Active"}
+    return {"status": "ok", "message": "Recap with Tarbin Studio Engine Active"}
 
-# Step 1: AI Recap Video Processing
+# Tab 1: Full Recap Generator
 @app.post("/process-recap")
 async def process_recap(
     file: UploadFile = File(...),
@@ -86,16 +91,29 @@ async def process_recap(
             await asyncio.sleep(3)
             video_file = genai.get_file(video_file.name)
 
-        outro_text = " 'History With Tarbin' မှ တင်ဆက်ပေးလိုက်တာဖြစ်ပါတယ်။" if include_outro else ""
-        prompt = f"Analyze video, write Burmese movie recap script (~{duration}s audio duration). Mood: {tone_mood}, Pacing: {pacing}. Plain text only. End with: '{outro_text}'"
+        outro_text = " 'History With Tarbin' မှ တင်ဆက်ပေးလိုက်တာဖြစ်ပါတယ်။ ကြည့်ရှုပေးတဲ့အတွက် ကျေးဇူးတင်ပါတယ်။" if include_outro else ""
+        prompt = f"""
+        Analyze this video and generate a full movie recap script in Burmese language.
+        Requirements:
+        - Target duration: match ~{duration} seconds spoken output.
+        - Tone & Mood: {tone_mood}.
+        - Pacing: {pacing}.
+        - Spoken Burmese monologue text ONLY.
+        - End phrase: "{outro_text}"
+        """
 
         model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         response = model.generate_content([video_file, prompt])
-        
-        await text_to_speech(response.text, audio_path, voice_type, voice_speed)
+        recap_script = response.text
+
+        if not recap_script:
+            raise Exception("Gemini AI မှ Script မထုတ်ပေးနိုင်ပါ။")
+
+        await text_to_speech(recap_script, audio_path, voice_type, voice_speed)
 
         video_clip = VideoFileClip(input_video_path)
         audio_clip = AudioFileClip(audio_path)
+
         if video_clip.duration > duration:
             video_clip = video_clip.subclip(0, duration)
 
@@ -104,18 +122,25 @@ async def process_recap(
 
         video_clip.close()
         audio_clip.close()
-        if video_file: genai.delete_file(video_file.name)
+
+        if video_file:
+            try: genai.delete_file(video_file.name)
+            except: pass
+
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
 
         return FileResponse(output_video_path, media_type="video/mp4", filename=output_video_path)
+
     except Exception as e:
-        if video_file: genai.delete_file(video_file.name)
+        if video_file:
+            try: genai.delete_file(video_file.name)
+            except: pass
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if os.path.exists(audio_path): os.remove(audio_path)
         raise HTTPException(status_code=500, detail=str(e))
 
-# Step 2: Post-processing Blur & Logo Editing
+# Tab 2: Standalone Post-processing Editor
 @app.post("/apply-editor")
 async def apply_editor(
     file: UploadFile = File(...),
@@ -145,7 +170,12 @@ async def apply_editor(
 
         final_elements = [video_clip]
         if logo_path and os.path.exists(logo_path):
-            pos_map = {"top-left": ("left", "top"), "top-right": ("right", "top"), "bottom-left": ("left", "bottom"), "bottom-right": ("right", "bottom")}
+            pos_map = {
+                "top-left": ("left", "top"),
+                "top-right": ("right", "top"),
+                "bottom-left": ("left", "bottom"),
+                "bottom-right": ("right", "bottom")
+            }
             logo_clip = (ImageClip(logo_path)
                          .resize(width=logo_size)
                          .set_duration(video_clip.duration)
@@ -160,6 +190,7 @@ async def apply_editor(
         if logo_path and os.path.exists(logo_path): os.remove(logo_path)
 
         return FileResponse(output_video_path, media_type="video/mp4", filename=output_video_path)
+
     except Exception as e:
         if os.path.exists(input_video_path): os.remove(input_video_path)
         if logo_path and os.path.exists(logo_path): os.remove(logo_path)
