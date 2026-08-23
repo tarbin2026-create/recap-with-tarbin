@@ -3,6 +3,5 @@ uvicorn
 python-multipart
 google-generativeai
 edge-tts
-moviepy
-imageio[ffmpeg]
-
+moviepy==1.0.3
+proglog
